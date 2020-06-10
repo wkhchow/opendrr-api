@@ -14,17 +14,14 @@ check_dep curl git python3 pip docker
 
 ROOT=$( pwd )
 
+# kill the stack if it's running
+. kill-stack.sh
+
 # create the network
 docker network create opendrr-net > /dev/null 2>&1
 
 # start Elasticsearch
 container_es=elasticsearch
-
-if [ $(docker inspect -f '{{.State.Running}}' $container_es) = "true" ]; then
-    printf "\nElasticsearch container running. Stopping...\n"
-    docker stop $container_es > /dev/null 2>&1
-fi
-docker rm $container_es > /dev/null 2>&1
 printf "\nInitializing Elasticsearch container...\n\n"
 docker run -d --network opendrr-net --name $container_es -p 9200:9200 -p 9300:9300 -e "discovery.type=single-node" docker.elastic.co/elasticsearch/elasticsearch:7.7.1
 
@@ -55,24 +52,12 @@ deactivate
 
 # start pygeoapi
 container_pygeoapi=opendrr-api-pygeoapi
-
-if [ $(docker inspect -f '{{.State.Running}}' $container_pygeoapi) = "true" ]; then
-    printf "\npygeoapi container running. Stopping...\n"
-    docker stop $container_pygeoapi > /dev/null 2>&1
-fi
-docker rm $container_pygeoapi > /dev/null 2>&1
 printf "\nInitializing pygeoapi container...\n\n"
 docker pull geopython/pygeoapi
 docker run -d --network opendrr-net --name $container_pygeoapi -p 5000:80 -v $ROOT/configuration/local.config.yml:/pygeoapi/local.config.yml -it geopython/pygeoapi &&
 
 # start Kibana
 container_kibana=opendrr-api-kibana
-
-if [ $(docker inspect -f '{{.State.Running}}' $container_kibana) = "true" ]; then
-    printf "\nKibana container running. Stopping...\n"
-    docker stop $container_kibana > /dev/null 2>&1
-fi
-docker rm $container_kibana > /dev/null 2>&1
 printf "\nInitializing Kibana container...\n\n"
 docker run -d --network opendrr-net --name $container_kibana -p 5601:5601 docker.elastic.co/kibana/kibana:7.7.1
 
@@ -85,7 +70,13 @@ until $(curl --output /dev/null --silent --head --fail http://localhost:5601); d
 done
 printf "\r "
 
+# start PostGreSQL/PostGIS
+container_postgis=opendrr-api-postgis
+printf "\nInitializing PostGIS container...\n\n"
+docker run -d --network opendrr-net --name opendrr-api-postgis -p 5433:5432 -e "POSTGRES_HOST_AUTH_METHOD=trust" postgis/postgis
+
 printf "\nDone!\n"
+printf "\nPostGIS: listening on port 5433"
 printf "\nElasticsearch: http://localhost:9200"
 printf "\nIndices: http://localhost:9200/_cat/indices?v&pretty"
 printf "\nKibana: http://localhost:5601"
